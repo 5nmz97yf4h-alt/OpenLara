@@ -1,0 +1,56 @@
+
+name: OpenLara Web Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get source code
+        uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+
+      - name: Check source files
+        run: |
+          test -f platform/web/main.cpp
+          test -f platform/web/level/1/TITLE.PSX
+          test -f libs/stb_vorbis/stb_vorbis.c
+          test -f libs/tinf/tinflate.c
+
+      - name: Prepare web build
+        working-directory: platform/web
+        run: |
+          mkdir -p audio/1 audio/2 audio/3
+          mkdir -p level/2 level/3
+          touch audio/1/dummy audio/2/dummy audio/3/dummy
+          touch level/2/dummy level/3/dummy
+
+      - name: Compile OpenLara
+        working-directory: platform/web
+        run: |
+          em++ main.cpp ../../libs/stb_vorbis/stb_vorbis.c ../../libs/tinf/tinflate.c \
+            -O3 -ffast-math -fmax-type-align=2 -std=c++11 \
+            -s ALLOW_MEMORY_GROWTH=1 -s USE_WEBGL2=1 \
+            -Wall -Wno-invalid-source-encoding -I../../ \
+            -o OpenLara.js \
+            --preload-file ./level/1/TITLE.PSX \
+            --preload-file ./audio/1/dummy \
+            --preload-file ./audio/2/dummy \
+            --preload-file ./audio/3/dummy \
+            --preload-file ./level/2/dummy \
+            --preload-file ./level/3/dummy
+
+      - name: Save build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openlara-web-test
+          path: |
+            platform/web/OpenLara.js
+            platform/web/OpenLara.wasm
+            platform/web/OpenLara.data
+          if-no-files-found: error
