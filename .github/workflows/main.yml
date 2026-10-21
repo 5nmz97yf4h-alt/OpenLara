@@ -12,9 +12,6 @@ jobs:
       - name: Get source code
         uses: actions/checkout@v4
 
-      - name: Set up Emscripten
-        uses: mymindstorm/setup-emsdk@v14
-
       - name: Diagnose source files
         run: |
           echo "Repository root:"
