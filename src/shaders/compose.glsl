@@ -1,4 +1,3 @@
-R"====(
 #define MAX_LIGHTS			4
 #define MAX_CONTACTS		15
 #define WATER_FOG_DIST		(1.0 / (6.0 * 1024.0))
@@ -365,7 +364,6 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 		#endif
 
 		#ifdef ALPHA_TEST
-//color = vec4(1, 0, 0, 1);
 			if (color.w <= 0.5)
 				discard;
 		#endif
@@ -408,53 +406,3 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 				vec3 light = vLight.xyz;
 			#endif
 
-			#ifdef UNDERWATER
-				float uwSign = 1.0;
-				#ifdef TYPE_ENTITY
-					uwSign = step(uParam.y, vCoord.y);
-				#endif
-
-				#ifdef OPT_CAUSTICS
-					light += calcCaustics(normal) * uwSign;
-				#endif
-			#endif
-
-			#ifdef OPT_CONTACT
-				light *= getContactAO(vCoord, normal) * 0.5 + 0.5;
-			#endif
-
-			color.xyz *= light;
-
-			#if defined(TYPE_ENTITY) && defined(OPT_UNDERWATER_FOG)
-				float specular = calcSpecular(normal, vViewVec.xyz, vLightVec, uLightColor[0], rSpecular);
-				#ifdef UNDERWATER
-					specular *= (1.0 - uwSign);
-				#endif
-				color.xyz += specular;
-			#endif
-
-			#ifdef UNDERWATER
-				#ifdef OPT_UNDERWATER_FOG
-					float dist;
-					if (uViewPos.y < uParam.y)
-						dist = abs((vCoord.y - uParam.y) / normalize(uViewPos.xyz - vCoord.xyz).y);
-					else
-						dist = length(uViewPos.xyz - vCoord.xyz);
-					float fog = clamp(1.0 / exp(dist * WATER_FOG_DIST * uwSign), 0.0, 1.0);
-					dist += vCoord.y - uParam.y;
-					color.xyz *= mix(vec3(1.0), UNDERWATER_COLOR, clamp(dist * WATER_COLOR_DIST * uwSign, 0.0, 2.0));
-					color.xyz = mix(UNDERWATER_COLOR * 0.2, color.xyz, fog);
-				#else
-					color.xyz = mix(color.xyz, color.xyz * UNDERWATER_COLOR, uwSign);
-					color.xyz = mix(UNDERWATER_COLOR * 0.2, color.xyz, vNormal.w);
-				#endif
-			#else
-				color.xyz = mix(uFogParams.xyz, color.xyz, vNormal.w);
-			#endif
-		#endif
-
-		fragColor = color;
-	}
-
-#endif
-)===="
