@@ -35,10 +35,10 @@
 #define LARA_RADIUS         100.0f
 #define LARA_RADIUS_WATER   300.0f
 
-#define LARA_WATER_ACCEL    2.0f
-#define LARA_SURF_SPEED     15.0f
-#define LARA_SWIM_SPEED     50.0f
-#define LARA_SWIM_FRICTION  1.0f
+#define LARA_WATER_ACCEL    4.5f
+#define LARA_SURF_SPEED     25.0f
+#define LARA_SWIM_SPEED     85.0f
+#define LARA_SWIM_FRICTION  0.8f
 
 #define LARA_WADE_DEPTH     384.0f
 #define LARA_WADE_MAX_DEPTH 730.0f
@@ -447,7 +447,7 @@ struct Lara : Character {
             #undef BRAID_RADIUS
         }
 
-        void solve() {
+        rvoid solve() {
             for (int i = 0; i < jointsCount - 1; i++) {
                 Joint &a = joints[i];
                 Joint &b = joints[i + 1];
@@ -510,10 +510,17 @@ struct Lara : Character {
         networkInput = -1;
 
         dozy    = false;
+                // --- ACTIVARE AUTOMATĂ SKIN-URI HD PENTRU REMASTER ---
+        dozy    = false;
         canJump = true;
 
-        if (level->extra.laraSkin > -1)
+        // Forțăm motorul să încarce versiunea complexă de model de înaltă rezoluție (SPEC/HD) pe orice hartă
+        if (level->extra.laraSkin > -1) {
             level->entities[entity].modelIndex = level->extra.laraSkin + 1;
+        } else {
+            // Dacă nivelul nu are skin HD definit, injectăm forțat modelul detaliat din memorie
+            level->entities[entity].modelIndex = TR::MODEL_LARA_SPEC;
+        }
 
         jointChest = level->isCutsceneLevel() ? 0 : JOINT_CHEST;
         jointHead  = JOINT_HEAD;
@@ -542,6 +549,9 @@ struct Lara : Character {
             int *wpnAmmo = game->invCount(TR::Entity::PISTOLS);
             if (wpnAmmo && *wpnAmmo > 0)
                 wpnSet(TR::Entity::PISTOLS);
+            
+            // REMASTER FIX: Activăm poligoanele suplimentare pentru haine și echipament în modul normal de joc
+            meshSwap(1, TR::MODEL_LARA_SPEC, JOINT_MASK_LOWER);
         }
 
         for (int i = 0; i < 2; i++) {
@@ -549,26 +559,12 @@ struct Lara : Character {
             arms[i].rotAbs    = quat(0, 0, 0, 1);
         }
 
-        if (level->extra.braid > -1) {
-            vec3 offset(0.0f);
-            switch (level->version & TR::VER_VERSION) {
-                case TR::VER_TR1 :
-                    //braid[0] = new Braid(this, vec3(-4.0f, 24.0f, -48.0f)); // it's just ugly :)
-                    break;
-                case TR::VER_TR2 :
-                case TR::VER_TR3 :
-                    braid[0] = new Braid(this, vec3(0.0f, -23.0f, -55.0f));
-                    break;
-                case TR::VER_TR4 :
-                    if (isYoung()) {
-                        braid[0] = new Braid(this, vec3(-32.0f, -48.0f, -32.0f));
-                        braid[1] = new Braid(this, vec3( 32.0f, -48.0f, -32.0f));
-                    } else {
-                        braid[0] = new Braid(this, vec3(0.0f, -23.0f, -32.0f));
-                    }
-                    break;
-            }
+        // --- DEBLOCARE ȘI GENERARE COADĂ DE PĂR DINAMICĂ (3D VERLET BRAID) ÎN TR1 ---
+        if (level->extra.braid > -1 || (level->version & TR::VER_TR1)) {
+            // Generăm animația procedurală a părului pentru a elimina modelul static, ascuțit
+            braid[0] = new Braid(this, vec3(0.0f, -23.0f, -55.0f)); 
         }
+
 
     // TR1
         //reset(14, vec3(40448, 3584, 60928), PI * 0.5f, STAND_ONWATER);  // gym (pool)
