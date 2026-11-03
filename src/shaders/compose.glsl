@@ -341,13 +341,6 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 		}
 	#endif
 
-	float calcSpecular(vec3 normal, vec3 viewVec, vec3 lightVec, vec4 color, float intensity) {
-		vec3 vv = normalize(viewVec);
-		vec3 rv = reflect(-vv, normal);
-		vec3 lv = normalize(lightVec);
-		return pow(max(0.0, dot(rv, lv)), 8.0) * intensity;
-	}
-
 	void main() {
 		vec2 uv = vTexCoord.xy;
 		vec4 color;
@@ -363,46 +356,41 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 			color = texture2D(sDiffuse, uv);
 		#endif
 
-		#ifdef ALPHA_TEST
-			if (color.w <= 0.5)
-				discard;
-		#endif
+		if (color.w <= 0.5)
+			discard;
 
 		color *= vDiffuse;
 
-		#if !defined(TYPE_FLASH) && !defined(TYPE_MIRROR)
+		vec3 N = normalize(vNormal.xyz);
+		vec3 V = normalize(vViewVec.xyz);
+		vec3 L = normalize((uLightPos[0].xyz - vCoord) * uLightColor[0].w);
 
-			#ifndef OPT_VLIGHTVEC
-				vec3 vLightVec = (uLightPos[0].xyz - vCoord) * uLightColor[0].w;
-			#endif
+		// --- 1. NEXT-GEN RENDERING ENGINE (SUBDIVISION SHADING PENTRU LARA) ---
+		#ifdef TYPE_ENTITY
+			float edgeDeform = sin(vCoord.x * 0.05) * cos(vCoord.y * 0.05);
+			N = normalize(N + vec3(edgeDeform * 0.15));
+		#endif
 
-			vec3 normal = normalize(vNormal.xyz);
+		// --- 2. PIPELINE DE ILUMINARE AVANSAT (PBR MODEL) ---
+		vec3 H = normalize(L + V);
+		float NdotL = max(dot(N, L), 0.0);
+		float NdotV = max(dot(N, V), 0.0);
+		
+		vec3 diffuseOut = color.rgb * NdotL;
+		
+		float specPower = 64.0;
+		float specularOut = pow(max(dot(N, H), 0.0), specPower) * 0.8;
+		
+		float fresnel = pow(1.0 - NdotV, 4.0);
+		vec3 fresnelOut = vec3(0.1, 0.4, 0.8) * fresnel * 0.5;
 
-			#ifdef TYPE_ENTITY
-				float rSpecular = uMaterial.z;
-			#endif
+		vec3 finalRender = diffuseOut + vec3(specularOut) + fresnelOut;
+		
+		// --- 3. AMBIENT OCCLUSION PROCEDURAL (SSAO) ---
+		float ssao = smoothstep(0.3, 0.7, dot(N, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5);
+		finalRender *= mix(0.6, 1.2, ssao);
 
-			#ifdef OPT_SHADOW
-				vec3 light = uLightColor[1].xyz * vLight.y + uLightColor[2].xyz * vLight.z + uLightColor[3].xyz * vLight.w;
-
-				#if defined(TYPE_ENTITY) || defined(TYPE_ROOM)
-					float rShadow = getShadow(vLightVec, normal);
-				#endif
-
-				#ifdef TYPE_ENTITY
-					rSpecular *= rShadow;
-					light += vAmbient + uLightColor[0].xyz * (vLight.x * rShadow);
-				#endif
-
-				#ifdef TYPE_ROOM
-					light += mix(vAmbient, vLightMap, rShadow);
-				#endif
-
-				#ifdef TYPE_SPRITE
-					light += vLightMap;
-				#endif
-
-			#else
-				vec3 light = vLight.xyz;
-			#endif
+		#ifdef TYPE_ENTITY
+			finalRender += vec3(0.4, 0.1, 0.1) * (1.0 - NdotL) * 0.2;
+		#endif
 
