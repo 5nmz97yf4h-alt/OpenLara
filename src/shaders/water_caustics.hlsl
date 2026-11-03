@@ -1,57 +1,30 @@
-#include "common.hlsl"
+// --- WATER CAUSTICS SHADER MODIFICAT ---
+uniform vec4 uParam; // uParam.x reprezinta timpul (time) pentru animatie
+varying vec3 vCoord;
+varying vec4 vNormal;
 
-struct VS_OUTPUT {
-	float4 pos      : POSITION;
-	float3 oldPos   : TEXCOORD1;
-	float3 newPos   : TEXCOORD2;
-};
-
-float2 getInvUV(float2 uv, float4 param) {
-	float2 p = (float2(uv.x, -uv.y) * 0.5 + 0.5) * param.zw;
-
-#ifdef _GAPI_D3D9
-	p.xy += 0.5 * param.xy;
-#endif
-
-	return p;
+float generateWaves(vec2 uv, float speed) {
+    // Matematica pentru valuri procedurale suprapuse
+    float time = uParam.x * speed;
+    float w1 = sin(uv.x * 0.05 + time) * cos(uv.y * 0.05 + time);
+    float w2 = sin(uv.y * 0.1 - time) * cos(uv.x * 0.08 + time * 1.5);
+    return (w1 + w2) * 0.5 + 0.5;
 }
 
-float2 getUV(float2 uv, float4 param) {
-	return (uv.xy * 0.5 + 0.5) * param.zw;
+void main() {
+    vec2 waterUV = vCoord.xz * 0.005; // Scalarea texturii de apa
+    
+    // Generam doua straturi de valuri care se intersecteaza pentru realism
+    float waveLayer1 = generateWaves(waterUV, 2.0);
+    float waveLayer2 = generateWaves(waterUV * 1.8 + vec2(0.5), 1.3);
+    
+    float finalCaustic = mix(waveLayer1, waveLayer2, 0.5);
+    
+    // Definim o culoare de apa moderna, un turcoaz profund cristalin
+    vec3 waterCyan = vec3(0.05, 0.50, 0.75);
+    vec3 causticBright = vec3(0.8, 0.95, 1.0) * finalCaustic * 0.4;
+    
+    vec3 finalWaterColor = waterCyan + causticBright;
+    
+    gl_FragColor = vec4(finalWaterColor, 0.55); // 0.55 este transparenta apei (mai curata)
 }
-
-#ifdef VERTEX
-VS_OUTPUT main(VS_INPUT In) {
-	VS_OUTPUT Out;
-
-	float3 coord  = In.aCoord.xyz * INV_SHORT_HALF;
-
-	float3 rCoord = float3(coord.x, coord.y, 0.0) * uPosScale[1].xzy;
-
-	float2 uv     = getInvUV(rCoord.xy, uTexParam).xy;
-	float2 info   = SAMPLE_2D_LOD0(sNormal, uv).xy;
-	float3 normal = calcHeightMapNormal(float2(uv.x + uTexParam.x, uv.y), float2(uv.x, uv.y - uTexParam.y), info.x).xzy;
-
-	float3 light  = float3(0.0, 0.0, 1.0);
-	float3 refOld = refract(-light, float3(0.0, 0.0, 1.0), 0.75);
-	float3 refNew = refract(-light, normalize(normal + float3(0.0, 0.0, 0.25)), 0.75);
-
-	Out.oldPos = rCoord + refOld * (-1.0 / refOld.z) + refOld * ((-refOld.z - 1.0) / refOld.z);
-	Out.newPos = rCoord + refNew * ((info.r - 1.0) / refNew.z) + refOld * ((-refNew.z - 1.0) / refOld.z);
-
-	Out.pos = float4(Out.newPos.xy + refOld.xy / refOld.z, 0.0, 1.0);
-
-	return Out;
-}
-
-#else // PIXEL
-
-float4 main(VS_OUTPUT In) : COLOR0 {
-	float rOldArea = length(ddx(In.oldPos)) * length(ddy(In.oldPos));
-	float rNewArea = length(ddx(In.newPos)) * length(ddy(In.newPos));
-	rNewArea = max(rNewArea, 0.00002); // WebGL NVIDIA workaround >_<
-	float value = saturate(rOldArea / rNewArea * 0.2);
-	return float4(value, 0.0, 0.0, 0.0);
-}
-
-#endif
