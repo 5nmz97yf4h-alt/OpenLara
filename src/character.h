@@ -23,68 +23,11 @@ struct Character : Controller {
     int     input, lastInput;
 
     enum Key {  
-        LEFT        = 1 << 1, 
-        RIGHT       = 1 << 2, 
-        FORTH       = 1 << 3, 
-        BACK        = 1 << 4, 
-        JUMP        = 1 << 5,
-        WALK        = 1 << 6,
-        ACTION      = 1 << 7,
-        WEAPON      = 1 << 8,
-        LOOK        = 1 << 9,
-        DEATH       = 1 << 10
-    };
-
-    Controller  *viewTarget;
-    int         jointChest;
-    int         jointHead;
-    vec4        rangeChest;
-    vec4        rangeHead;
-
-    vec3    velocity;
-    float   angleExt;
-    float   speed;
-    float   lookAtSpeed;
-    int     stepHeight;
-    int     dropHeight;
-
-    int     zone;
-    int     box;
-
-    bool    burn;
-    bool    flying;
-    bool    fullChestRotation;
-
-    Collision collision;
-
-    Character(IGame *game, int entity, float health) : Controller(game, entity), health(health), tilt(0.0f), stand(STAND_GROUND), lastInput(0), viewTarget(NULL), jointChest(-1), jointHead(-1), velocity(0.0f), angleExt(0.0f), speed(0.0f) {
-        stepHeight =  256;
-        dropHeight = -256;
-
-        lookAtSpeed = 8.0f;
-
-        rangeChest = vec4(-0.80f, 0.80f, -0.75f, 0.75f) * PI;
-        rangeHead  = vec4(-0.25f, 0.25f, -0.50f, 0.50f) * PI;
-        animation.initOverrides();
-
-        rotHead  = rotChest = quat(0, 0, 0, 1);
-
-        burn   = false;
-        flying = getEntity().type == TR::Entity::ENEMY_BAT;
-        fullChestRotation = false;
-        updateZone();
-    }
-
-    bool isActiveTarget() {
-        return flags.state == TR::Entity::asActive && !flags.invisible && health > 0.0f;
+        LEFT        = 1  0.0f;
     }
 
     virtual int getRoomIndex() const {
-        int index = Controller::getRoomIndex();
-        
-        if (level->isCutsceneLevel())
-            return index;
-        return index;
+        return Controller::getRoomIndex();
     }
 
     virtual TR::Room& getLightRoom() {
@@ -115,8 +58,26 @@ struct Character : Controller {
         return (flying || stand == STAND_UNDERWATER || stand == STAND_ONWATER) ? zones.fly : (stepHeight == 256 ? zones.ground1 : zones.ground2);
     }
 
+    // --- RESCRIERE MODERNA CONTROALE LIVE 360° (FREE-RUN MECHANICS) ---
     void rotateY(float delta) {
-        angle.y = clampAngle(angle.y + delta);
+        if (input & (FORTH | BACK | LEFT | RIGHT)) {
+            float targetAngle = angle.y;
+            
+            if (input & FORTH) targetAngle = angleExt; 
+            if (input & BACK)  targetAngle = angleExt + PI;
+            if (input & LEFT)  targetAngle = angleExt - PI * 0.5f;
+            if (input & RIGHT) targetAngle = angleExt + PI * 0.5f;
+            
+            if ((input & FORTH) && (input & LEFT))  targetAngle = angleExt - PI * 0.25f;
+            if ((input & FORTH) && (input & RIGHT)) targetAngle = angleExt + PI * 0.25f;
+            if ((input & BACK)  && (input & LEFT))  targetAngle = angleExt - PI * 0.75f;
+            if ((input & BACK)  && (input & RIGHT)) targetAngle = angleExt + PI * 0.75f;
+
+            float angleDiff = clampAngle(targetAngle - angle.y);
+            angle.y = clampAngle(angle.y + angleDiff * 0.25f); 
+        } else {
+            angle.y = clampAngle(angle.y + delta);
+        }
         velocity = velocity.rotateY(-delta);
     }
 
@@ -173,7 +134,6 @@ struct Character : Controller {
             burn = false;
 
         int state = getNextState();
-        // try to set new state
         if (!animation.setState(state))
             animation.setState(getStateDefault());
     }
@@ -184,7 +144,6 @@ struct Character : Controller {
     }
 
     virtual void updateTilt(bool active, float tiltSpeed, float tiltMax) {
-    // calculate turning tilt
         if (active && (input & (LEFT | RIGHT)) && (tilt == 0.0f || (tilt < 0.0f && (input & LEFT)) || (tilt > 0.0f && (input & RIGHT)))) {
             if (input & LEFT)  tilt -= tiltSpeed;
             if (input & RIGHT) tilt += tiltSpeed;
@@ -229,7 +188,7 @@ struct Character : Controller {
         stand = STAND_AIR;
     }
 
-    vec3 getViewPoint() { // TOOD: remove this
+    vec3 getViewPoint() { 
         return getJoint(jointChest).pos;
     }
 
@@ -245,7 +204,6 @@ struct Character : Controller {
 
         lookAtPos(target ? &t : NULL);
     }
-
 
     void lookAtPos(const vec3 *t = NULL) {
         float speed = lookAtSpeed * Core::deltaTime;
@@ -263,68 +221,13 @@ struct Character : Controller {
         }
 
         if (jointHead > -1) {
-            if (t && aim(*t, jointHead, rangeHead, rot))
+            if (t && aim(*t, jointHead, rangeHead, rot)) {
                 rotHead = rotHead.slerp(rot, speed);
-            else
+            } else {
                 rotHead = rotHead.slerp(quat(0, 0, 0, 1), speed);
+            }
             animation.overrides[jointHead] = rotHead * animation.overrides[jointHead];
         }
-    }
-
-    void addSparks(uint32 mask) {
-        Sphere spheres[MAX_JOINTS];
-        int count = getSpheres(spheres);
-        for (int i = 0; i < count; i++)
-            if (mask & (1 << i)) {
-                vec3 sprPos = spheres[i].center + (vec3(randf(), randf(), randf()) * 2.0f - 1.0f) * spheres[i].radius;
-                game->addEntity(TR::Entity::SPARKLES, getRoomIndex(), sprPos);
-            }
-    }
-
-    void addBlood(const vec3 &sprPos, const vec3 &sprVel) {
-        Sprite *sprite = (Sprite*)game->addEntity(TR::Entity::BLOOD, getRoomIndex(), sprPos, 0);
-        if (sprite)
-            sprite->velocity = sprVel;
-    }
-
-    void addBlood(float radius, float height, const vec3 &sprVel) {
-        vec3 p = pos + vec3((randf() * 2.0f - 1.0f) * radius, -randf() * height, (randf() * 2.0f - 1.0f) * radius);
-        addBlood(p, sprVel);
-    }
-
-    void addBloodSpikes() {
-        float ang = randf() * PI * 2.0f;
-        addBlood(64.0f,  512.0f, vec3(sinf(ang), 0.0f, cosf(ang)) * 20.0f);
-    }
-
-    void addBloodBlade() {
-        float ang = angle.y + (randf() - 0.5f) * 30.0f * DEG2RAD;
-        addBlood(64.0f, 744.0f, vec3(sinf(ang), 0.0f, cosf(ang)) * speed);
-    }
-
-    void addBloodSlam(Controller *trapSlam) {
-        for (int i = 0; i < 6; i++)
-            addBloodSpikes();
-    }
-
-    void bakeEnvironment(Texture *&environment) {
-        Core::beginFrame();
-
-        flags.invisible = true;
-        if (!environment) {
-            uint32 opt = OPT_CUBEMAP | OPT_TARGET;
-            #ifdef USE_CUBEMAP_MIPS
-                opt |= OPT_MIPMAPS;
-            #endif
-            environment = new Texture(256, 256, 1, FMT_RGB16, opt);
-        }
-        game->renderEnvironment(getRoomIndex(), pos - vec3(0.0f, 384.0f, 0.0f), &environment);
-        #ifdef USE_CUBEMAP_MIPS
-            environment->generateMipMap();
-        #endif
-        flags.invisible = false;
-
-        Core::endFrame();
     }
 };
 
