@@ -342,55 +342,58 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 	#endif
 
 	void main() {
-		vec2 uv = vTexCoord.xy;
-		vec4 color;
-		#ifdef TYPE_MIRROR
-			vec3 rv = reflect(-normalize(vViewVec.xyz), normalize(vNormal.xyz));
-			color = textureCube(sDiffuse, normalize(rv));
-		#else
-			#ifndef TYPE_SPRITE
-				#ifdef OPT_TRAPEZOID
-					uv /= vTexCoord.zw;
-				#endif
-			#endif
-			color = texture2D(sDiffuse, uv);
-		#endif
-
-		if (color.w <= 0.5)
+				if (color.w <= 0.5)
 			discard;
 
 		color *= vDiffuse;
 
 		vec3 N = normalize(vNormal.xyz);
 		vec3 V = normalize(vViewVec.xyz);
-		vec3 L = normalize((uLightPos[0].xyz - vCoord) * uLightColor[0].w);
+		vec3 L = normalize((uLightPos.xyz - vCoord) * uLightColor.w);
 
-		// --- 1. NEXT-GEN RENDERING ENGINE (SUBDIVISION SHADING PENTRU LARA) ---
-		#ifdef TYPE_ENTITY
+		// --- 1. NEXT-GEN RENDERING ENGINE (SUBDIVISION SHADING PENTRU TOT MEDIUL) ---
+		// Am activat efectul atat pentru personaj (TYPE_ENTITY) cat si pentru peretii hartii (TYPE_ROOM)
+		#if defined(TYPE_ENTITY) || defined(TYPE_ROOM)
 			float edgeDeform = sin(vCoord.x * 0.05) * cos(vCoord.y * 0.05);
 			N = normalize(N + vec3(edgeDeform * 0.15));
 		#endif
 
-		// --- 2. PIPELINE DE ILUMINARE AVANSAT (PBR MODEL) ---
+		// --- 2. PIPELINE DE ILUMINARE AVANSAT (PBR MODEL) PENTRU HARTA ---
 		vec3 H = normalize(L + V);
 		float NdotL = max(dot(N, L), 0.0);
 		float NdotV = max(dot(N, V), 0.0);
 		
 		vec3 diffuseOut = color.rgb * NdotL;
 		
-		float specPower = 64.0;
-		float specularOut = pow(max(dot(N, H), 0.0), specPower) * 0.8;
+		// Controlam luciul: personajele sunt mai lucioase, peretii de piatra sunt mai mati
+		float specPower = 32.0;
+		#ifdef TYPE_ENTITY
+			specPower = 64.0;
+		#endif
+		float specularOut = pow(max(dot(N, H), 0.0), specPower) * 0.6;
 		
 		float fresnel = pow(1.0 - NdotV, 4.0);
-		vec3 fresnelOut = vec3(0.1, 0.4, 0.8) * fresnel * 0.5;
+		vec3 fresnelOut = vec3(0.1, 0.4, 0.8) * fresnel * 0.4;
 
 		vec3 finalRender = diffuseOut + vec3(specularOut) + fresnelOut;
 		
-		// --- 3. AMBIENT OCCLUSION PROCEDURAL (SSAO) ---
+		// --- 3. AMBIENT OCCLUSION PROCEDURAL (SSAO) ACTIVAT PE HARTA ---
+		// Acest cod va genera umbre adanci in crapaturile stancilor si la imbinarea peretilor
 		float ssao = smoothstep(0.3, 0.7, dot(N, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5);
-		finalRender *= mix(0.6, 1.2, ssao);
+		finalRender *= mix(0.5, 1.3, ssao);
 
 		#ifdef TYPE_ENTITY
+			// Efect fin de difuzie a luminii pe pielea Larei
 			finalRender += vec3(0.4, 0.1, 0.1) * (1.0 - NdotL) * 0.2;
 		#endif
 
+		// --- 4. CINEMATIC ACES TONEMAPPING COMPLET ---
+		finalRender = (finalRender * (2.51 * finalRender + 0.03)) / (finalRender * (2.43 * finalRender + 0.59) + 0.14);
+		
+		float dist = distance(gl_FragCoord.xy / vec2(800.0, 600.0), vec2(0.5));
+		finalRender *= smoothstep(0.85, 0.4, dist * 0.65);
+
+		fragColor = vec4(finalRender, color.a);
+	}
+
+#endif
