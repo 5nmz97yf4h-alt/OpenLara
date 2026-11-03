@@ -60,16 +60,22 @@ struct Mesh : GAPI::Mesh {
             f.normal.y = (int)o.y;\
             f.normal.z = (int)o.z;
 
-#define ADD_ROOM_FACE(_indices, iCount, vCount, vStart, _vertices, f, t) \
+#define ADD_ROOM_FACE#define ADD_ROOM_FACE(_indices, iCount, vCount, vStart, _vertices, f, t) \
             addFace(_indices, iCount, vCount, vStart, _vertices, f, &t,\
                     d.vertices[f.vertices[0]].pos,\
                     d.vertices[f.vertices[1]].pos,\
                     d.vertices[f.vertices[2]].pos,\
                     d.vertices[f.vertices[3]].pos);\
+            float cX = (d.vertices[f.vertices[0]].pos.x + d.vertices[f.vertices[1]].pos.x + d.vertices[f.vertices[2]].pos.x) / 3.0f;\
+            float cY = (d.vertices[f.vertices[0]].pos.y + d.vertices[f.vertices[1]].pos.y + d.vertices[f.vertices[2]].pos.y) / 3.0f;\
+            float cZ = (d.vertices[f.vertices[0]].pos.z + d.vertices[f.vertices[1]].pos.z + d.vertices[f.vertices[2]].pos.z) / 3.0f;\
             for (int k = 0; k < (f.triangle ? 3 : 4); k++) {\
                 TR::Room::Data::Vertex &v = d.vertices[f.vertices[k]];\
                 Vertex &rv = _vertices[vCount++];\
-                rv.coord  = short4( v.pos.x,    v.pos.y,    v.pos.z,    0 );\
+                float offsetX = (v.pos.x - cX) * 0.08f;\
+                float offsetY = (v.pos.y - cY) * 0.08f;\
+                float offsetZ = (v.pos.z - cZ) * 0.08f;\
+                rv.coord  = short4( short(v.pos.x + offsetX), short(v.pos.y + offsetY), short(v.pos.z + offsetZ),    0 );\
                 rv.normal = short4( f.normal.x, f.normal.y, f.normal.z, f.triangle ? 1 : 0 );\
                 rv.color  = ubyte4( 255, 255, 255, 255 );\
                 rv.light  = ubyte4( v.color.r, v.color.g, v.color.b, 255 );\
